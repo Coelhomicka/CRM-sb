@@ -1,0 +1,5 @@
+{
+  "name": "Smooking Brother",
+  "description": "Sistema de gestão para tabacaria com visão de cliente e vendedor, integração com Mercado Pago e sistema de fidelidade.",
+  "requestFramePermissions": []
+}
