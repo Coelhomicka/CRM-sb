@@ -17,7 +17,8 @@ import {
   Users,
   DollarSign,
   Award,
-  CreditCard
+  CreditCard,
+  AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -32,7 +33,9 @@ import {
   ResponsiveContainer,
   Cell,
   AreaChart,
-  Area
+  Area,
+  PieChart,
+  Pie
 } from 'recharts';
 import { User, Product, Category, Order, Stats } from './types';
 
@@ -65,7 +68,7 @@ const Card = ({ children, className = '' }: any) => (
 // --- MAIN APP ---
 
 export default function App() {
-  const [view, setView] = useState<'store' | 'cart' | 'profile' | 'seller-orders' | 'seller-dashboard' | 'seller-manage' | 'auth'>('store');
+  const [view, setView] = useState<'store' | 'cart' | 'profile' | 'seller-orders' | 'seller-dashboard' | 'seller-manage' | 'seller-stock' | 'auth'>('store');
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
   const [products, setProducts] = useState<Product[]>([]);
@@ -80,7 +83,8 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
-  const [logoUrl, setLogoUrl] = useState<string>(localStorage.getItem('logoUrl') || 'https://i.ibb.co/p667r9Y/logo.png');
+  const [stockStats, setStockStats] = useState<any>(null);
+  const [logoUrl, setLogoUrl] = useState<string>(localStorage.getItem('logoUrl') || 'https://image2url.com/r2/default/images/1772767434146-702f7a65-f338-4653-b3e4-bd31d6073ae9.png');
   const [newLogoUrl, setNewLogoUrl] = useState('');
   
   // Management states
@@ -382,11 +386,55 @@ export default function App() {
   };
 
   const fetchStats = async () => {
-    const res = await fetch('/api/seller/stats', {
-      headers: { 'Authorization': `Bearer ${token}` }
+    const response = await fetch('/api/seller/stats', {
+      headers: { Authorization: `Bearer ${token}` }
     });
-    const data = await res.json();
+    const data = await response.json();
     setStats(data);
+  };
+
+  const fetchStockStats = async () => {
+    try {
+      console.log('[STOCK] Starting fetch stock stats...');
+      console.log('[STOCK] Token:', token ? 'exists' : 'missing');
+      console.log('[STOCK] Full token:', token);
+      
+      const url = '/api/seller/stock-analysis';
+      console.log('[STOCK] Fetching URL:', url);
+      
+      const response = await fetch(url, {
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('[STOCK] Response received');
+      console.log('[STOCK] Response status:', response.status);
+      console.log('[STOCK] Response ok:', response.ok);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[STOCK] Response not ok:', response.status, response.statusText, errorText);
+        alert(`Erro ao carregar dados de estoque: ${response.status} - ${errorText}`);
+        setStockStats(null);
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('[STOCK] Data received successfully:', data);
+      console.log('[STOCK] Data keys:', Object.keys(data));
+      console.log('[STOCK] Setting stockStats state...');
+      setStockStats(data);
+      console.log('[STOCK] State set successfully');
+    } catch (error) {
+      console.error('[STOCK] Error type:', error.constructor.name);
+      console.error('[STOCK] Error message:', error.message);
+      console.error('[STOCK] Error stack:', error.stack);
+      console.error('[STOCK] Full error object:', JSON.stringify(error, Object.getOwnPropertyNames(error)));
+      alert(`Erro ao buscar dados de estoque: ${error.message || 'Erro desconhecido'}`);
+      setStockStats(null);
+    }
   };
 
   const saveProduct = async (e: React.FormEvent) => {
@@ -483,9 +531,14 @@ export default function App() {
   };
 
   useEffect(() => {
+    console.log('[EFFECT] View changed to:', view, 'Token exists:', !!token);
     if (view === 'profile' && token) fetchMyOrders();
     if (view === 'seller-orders' && token) fetchSellerOrders();
     if (view === 'seller-dashboard' && token) fetchStats();
+    if (view === 'seller-stock' && token) {
+      console.log('[EFFECT] Calling fetchStockStats...');
+      fetchStockStats();
+    }
     if (view === 'seller-manage' && token) {
       fetchProducts();
       fetchCategories();
@@ -519,6 +572,10 @@ export default function App() {
               <button onClick={() => setView('seller-manage')} className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${view === 'seller-manage' ? 'bg-surface-hover font-semibold' : 'hover:bg-surface-hover'}`}>
                 <Package size={20} />
                 <span className="hidden sm:inline">Gerenciar</span>
+              </button>
+              <button onClick={() => setView('seller-stock')} className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors ${view === 'seller-stock' ? 'bg-surface-hover font-semibold' : 'hover:bg-surface-hover'}`}>
+                <TrendingUp size={20} />
+                <span className="hidden sm:inline">Estoque</span>
               </button>
             </>
           ) : (
@@ -1149,6 +1206,230 @@ export default function App() {
                   </div>
                 </Card>
               </div>
+            </motion.div>
+          )}
+
+          {view === 'seller-stock' && (
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              className="space-y-8"
+            >
+              <h1 className="text-3xl font-bold">Análise de Estoque</h1>
+              
+              {!stockStats ? (
+                <div className="text-center py-8">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                  <p className="text-text-muted">Carregando dados de estoque...</p>
+                  <p className="text-xs text-text-muted mt-2">Se demorar muito, verifique o console (F12)</p>
+                </div>
+              ) : (
+                <div>
+              {console.log('[RENDER] Rendering stock stats with data:', stockStats)}
+
+              {/* Overview Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                <Card className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-blue-100/20 text-blue-600 rounded-2xl flex items-center justify-center">
+                    <Package size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted font-medium uppercase tracking-wider">Total Produtos</p>
+                    <p className="text-2xl font-bold">{stockStats.overview.totalProducts}</p>
+                  </div>
+                </Card>
+                <Card className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-purple-100/20 text-purple-600 rounded-2xl flex items-center justify-center">
+                    <LayoutDashboard size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted font-medium uppercase tracking-wider">Categorias</p>
+                    <p className="text-2xl font-bold">{stockStats.overview.totalCategories}</p>
+                  </div>
+                </Card>
+                <Card className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-red-100/20 text-red-600 rounded-2xl flex items-center justify-center">
+                    <AlertTriangle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted font-medium uppercase tracking-wider">Estoque Baixo</p>
+                    <p className="text-2xl font-bold">{stockStats.overview.lowStockProducts}</p>
+                  </div>
+                </Card>
+                <Card className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-orange-100/20 text-orange-600 rounded-2xl flex items-center justify-center">
+                    <XCircle size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted font-medium uppercase tracking-wider">Sem Estoque</p>
+                    <p className="text-2xl font-bold">{stockStats.overview.outOfStockProducts}</p>
+                  </div>
+                </Card>
+                <Card className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-100/20 text-emerald-600 rounded-2xl flex items-center justify-center">
+                    <DollarSign size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted font-medium uppercase tracking-wider">Valor Total</p>
+                    <p className="text-2xl font-bold">R$ {stockStats.overview.totalStockValue.toFixed(2)}</p>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Stock by Category Chart */}
+                <Card>
+                  <h3 className="font-bold text-lg mb-6">Estoque por Categoria</h3>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stockStats.stockByCategory}
+                          cx="50%"
+                          cy="50%"
+                          labelLine={false}
+                          label={({ name, value }) => `${name}: ${value}`}
+                          outerRadius={80}
+                          fill="#8884d8"
+                          dataKey="total_stock"
+                        >
+                          {stockStats.stockByCategory.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'][index % 5]} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value) => [`${value} unidades`, 'Estoque']} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+
+                {/* Top Value Products */}
+                <Card>
+                  <h3 className="font-bold text-lg mb-6">Produtos com Maior Valor em Estoque</h3>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stockStats.topValueProducts.slice(0, 8)} layout="vertical" margin={{ left: 60 }}>
+                        <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#e2e8f0" />
+                        <XAxis type="number" hide />
+                        <YAxis dataKey="name" type="category" width={100} axisLine={false} tickLine={false} fontSize={10} stroke="#64748b" />
+                        <Tooltip 
+                          cursor={{ fill: '#f1f5f9' }} 
+                          contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                          formatter={(value) => [`R$ ${Number(value).toFixed(2)}`, 'Valor em Estoque']}
+                        />
+                        <Bar dataKey="stock_value" radius={[0, 4, 4, 0]} barSize={20} fill="#10b981" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Critical Stock Products */}
+                <Card>
+                  <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
+                    <AlertTriangle size={20} className="text-red-500" />
+                    Produtos com Estoque Crítico
+                  </h3>
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                    {stockStats.criticalStockProducts.map((product, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-surface-hover rounded-xl border border-transparent hover:border-primary/20 transition-all">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-3 h-3 rounded-full ${
+                            product.status === 'Sem Estoque' ? 'bg-red-500' :
+                            product.status === 'Crítico' ? 'bg-orange-500' :
+                            'bg-yellow-500'
+                          }`}></div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold">{product.name}</span>
+                            <span className="text-[10px] text-text-muted">
+                              {product.stock} unidades • R$ {product.price.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full ${
+                            product.status === 'Sem Estoque' ? 'bg-red-100 text-red-700' :
+                            product.status === 'Crítico' ? 'bg-orange-100 text-orange-700' :
+                            'bg-yellow-100 text-yellow-700'
+                          }`}>
+                            {product.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                {/* Stock Movement */}
+                <Card>
+                  <h3 className="font-bold text-lg mb-6 flex items-center gap-2">
+                    <TrendingUp size={20} className="text-green-500" />
+                    Giro de Estoque (30 dias)
+                  </h3>
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                    {stockStats.stockMovement.map((product, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-surface-hover rounded-xl border border-transparent hover:border-primary/20 transition-all">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-primary/10 text-primary rounded-full flex items-center justify-center text-xs font-bold">
+                            {i + 1}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-sm font-bold">{product.name}</span>
+                            <span className="text-[10px] text-text-muted">
+                              Vendidos: {product.sold_quantity} • Estoque: {product.stock}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="font-bold text-primary">{product.turnover_rate}%</span>
+                          <p className="text-[10px] text-text-muted">Taxa de Giro</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              </div>
+
+              {/* Category Value Analysis */}
+              <Card>
+                <h3 className="font-bold text-lg mb-6">Análise de Valor por Categoria</h3>
+                <div className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={stockStats.stockByCategory}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                      <XAxis 
+                        dataKey="name" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        fontSize={12} 
+                        stroke="#64748b"
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        fontSize={10} 
+                        stroke="#64748b" 
+                        tickFormatter={(val) => `R$ ${val}`}
+                      />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                        formatter={(val: any) => [`R$ ${val.toFixed(2)}`, 'Valor Total']}
+                      />
+                      <Bar dataKey="category_value" radius={[4, 4, 0, 0]} barSize={40}>
+                        {stockStats.stockByCategory.map((_, index) => (
+                          <Cell key={`cell-${index}`} fill={['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444'][index % 5]} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+                </div>
+              )}
             </motion.div>
           )}
 

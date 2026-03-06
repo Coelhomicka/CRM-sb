@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Stock Endpoint</title>
+</head>
+<body>
+    <h1>Test Stock Analysis Endpoint</h1>
+    <button onclick="testEndpoint()">Test Endpoint</button>
+    <pre id="result"></pre>
+
+    <script>
+        async function testEndpoint() {
+            const resultEl = document.getElementById('result');
+            resultEl.textContent = 'Testing...';
+            
+            try {
+                // First login to get token
+                console.log('Logging in...');
+                const loginRes = await fetch('http://localhost:3000/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: 'vendedor@teste.com',
+                        password: 'seller123'
+                    })
+                });
+                
+                const loginData = await loginRes.json();
+                console.log('Login response:', loginData);
+                
+                if (!loginData.token) {
+                    resultEl.textContent = 'Login failed: ' + JSON.stringify(loginData, null, 2);
+                    return;
+                }
+                
+                const token = loginData.token;
+                console.log('Token obtained:', token);
+                
+                // Now test stock endpoint
+                console.log('Fetching stock analysis...');
+                const stockRes = await fetch('http://localhost:3000/api/seller/stock-analysis', {
+                    headers: { 
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                
+                console.log('Stock response status:', stockRes.status);
+                
+                if (!stockRes.ok) {
+                    const errorText = await stockRes.text();
+                    resultEl.textContent = `Error ${stockRes.status}: ${errorText}`;
+                    return;
+                }
+                
+                const stockData = await stockRes.json();
+                console.log('Stock data:', stockData);
+                
+                resultEl.textContent = JSON.stringify(stockData, null, 2);
+                
+            } catch (error) {
+                console.error('Error:', error);
+                resultEl.textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

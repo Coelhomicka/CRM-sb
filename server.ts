@@ -456,7 +456,7 @@ app.get('/api/seller/stats', authenticateToken, (req: any, res) => {
     ORDER BY date ASC
   `).all();
 
-  res.json({
+  const stats = {
     revenue: totalRevenue.total || 0,
     monthlyRevenue: monthlyRevenue.total || 0,
     avgTicket: totalOrders.count > 0 ? (totalRevenue.total / totalOrders.count) : 0,
@@ -464,7 +464,104 @@ app.get('/api/seller/stats', authenticateToken, (req: any, res) => {
     topProducts,
     topCustomers,
     revenueHistory
-  });
+  };
+  
+  res.json(stats);
+});
+
+// Stock Analysis Stats
+app.get('/api/seller/stock-analysis', authenticateToken, (req: any, res) => {
+  console.log('[SERVER] Stock analysis endpoint called');
+  console.log('[SERVER] User:', req.user);
+  
+  if (req.user.role !== 'seller') {
+    console.log('[SERVER] Access denied - user is not seller');
+    return res.sendStatus(403);
+  }
+  
+  try {
+    console.log('[SERVER] Fetching stock analysis data...');
+    
+    // Total products and categories
+    const totalProducts = db.prepare("SELECT COUNT(*) as count FROM products").get() as any;
+    const totalCategories = db.prepare("SELECT COUNT(*) as count FROM categories").get() as any;
+    
+    // Stock levels
+    const lowStockProducts = db.prepare("SELECT COUNT(*) as count FROM products WHERE stock <= 5").get() as any;
+    const outOfStockProducts = db.prepare("SELECT COUNT(*) as count FROM products WHERE stock = 0").get() as any;
+    const totalStockValue = db.prepare("SELECT SUM(price * stock) as total FROM products").get() as any;
+    
+    // Stock by category
+    const stockByCategory = db.prepare(`
+      SELECT c.name, COALESCE(SUM(p.stock), 0) as total_stock, COUNT(p.id) as product_count, COALESCE(SUM(p.price * p.stock), 0) as category_value
+      FROM categories c 
+      LEFT JOIN products p ON c.id = p.category_id 
+      GROUP BY c.id, c.name
+      ORDER BY total_stock DESC
+    `).all();
+    
+    // Products with critical stock levels
+    const criticalStockProducts = db.prepare(`
+      SELECT name, stock, price, (price * stock) as stock_value,
+      CASE 
+        WHEN stock = 0 THEN 'Sem Estoque'
+        WHEN stock <= 2 THEN 'Crítico'
+        WHEN stock <= 5 THEN 'Baixo'
+        ELSE 'Normal'
+      END as status
+      FROM products 
+      WHERE stock <= 10
+      ORDER BY stock ASC, name ASC
+    `).all();
+    
+    // Top products by stock value
+    const topValueProducts = db.prepare(`
+      SELECT name, stock, price, (price * stock) as stock_value
+      FROM products 
+      WHERE stock > 0
+      ORDER BY stock_value DESC
+      LIMIT 10
+    `).all();
+  
+  // Stock movement (products sold in last 30 days)
+  let stockMovement = [];
+  try {
+    stockMovement = db.prepare(`
+      SELECT p.name, p.stock, COALESCE(SUM(oi.quantity), 0) as sold_quantity,
+      ROUND((COALESCE(SUM(oi.quantity), 0) * 100.0 / (p.stock + COALESCE(SUM(oi.quantity), 0))), 2) as turnover_rate
+      FROM products p
+      LEFT JOIN order_items oi ON p.id = oi.product_id
+      LEFT JOIN orders o ON oi.order_id = o.id AND o.created_at >= date('now', '-30 days') AND o.status != 'cancelled'
+      GROUP BY p.id, p.name, p.stock
+      HAVING sold_quantity > 0
+      ORDER BY turnover_rate DESC
+      LIMIT 10
+    `).all();
+  } catch (e) {
+    console.error('Error fetching stock movement:', e);
+    stockMovement = [];
+  }
+  
+    const stats = {
+      overview: {
+        totalProducts: totalProducts.count,
+        totalCategories: totalCategories.count,
+        lowStockProducts: lowStockProducts.count,
+        outOfStockProducts: outOfStockProducts.count,
+        totalStockValue: totalStockValue.total || 0
+      },
+      stockByCategory,
+      criticalStockProducts,
+      topValueProducts,
+      stockMovement
+    };
+    
+    console.log('Stock analysis data prepared successfully');
+    res.json(stats);
+  } catch (error) {
+    console.error('Error in stock analysis endpoint:', error);
+    res.status(500).json({ error: 'Failed to fetch stock analysis data' });
+  }
 });
 
 // --- VITE MIDDLEWARE ---
